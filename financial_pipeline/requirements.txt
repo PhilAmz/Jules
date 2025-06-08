@@ -1,0 +1,10 @@
+# This file will list the Python dependencies for the project.
+yfinance
+ta
+lightgbm
+tensorflow
+scikit-learn
+tensorboard
+matplotlib
+optuna
+joblib
