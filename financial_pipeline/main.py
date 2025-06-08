@@ -1,4 +1,11 @@
-# This file will contain the main script for running the financial pipeline.
+"""
+Main orchestration module for the financial pipeline.
+
+This module provides functions to run end-to-end model training and evaluation,
+including data fetching, feature engineering, cross-validation, model training,
+and final model preparation. It also includes an example `if __name__ == '__main__':`
+block to demonstrate a typical pipeline execution flow.
+"""
 import numpy as np
 import pandas as pd
 from sklearn.pipeline import Pipeline
@@ -16,8 +23,8 @@ from evaluation.plotting import setup_tensorboard_writer, log_metrics_to_tensorb
 def train_and_evaluate_model(
     data_fetcher_params: dict,
     feature_engineering_pipeline: Pipeline,
-    model_wrapper, # Should be an instance of BaseModelWrapper
-    cv_splitter, # Should be an instance of BaseCrossValidator
+    model_wrapper, # Should be an instance of a class derived from BaseModelWrapper
+    cv_splitter, # Should be an instance of a class derived from BaseCrossValidator
     target_column_name: str,
     metrics_to_calculate: list,
     walk_forward_val_test_scheme: bool = False,
@@ -27,17 +34,34 @@ def train_and_evaluate_model(
     Trains and evaluates a model using a specified cross-validation strategy.
 
     Args:
-        data_fetcher_params (dict): Parameters for fetch_financial_data.
-        feature_engineering_pipeline (sklearn.pipeline.Pipeline): Pipeline of feature transformers.
-        model_wrapper: An instance of a model wrapper (e.g., LGBMWrapper).
-        cv_splitter: An instance of a CV splitter (e.g., BasicTimeSeriesSplit).
-        target_column_name (str): Name of the target column in the fetched DataFrame.
-        metrics_to_calculate (list): List of metric functions (e.g., [mean_squared_error]).
-        walk_forward_val_test_scheme (bool): True if cv_splitter yields (train, val, test) indices.
-        tensorboard_log_dir (str, optional): Directory for TensorBoard logs. If None, logging is skipped.
+        data_fetcher_params (dict): Parameters dictionary for `fetch_financial_data`.
+        feature_engineering_pipeline (sklearn.pipeline.Pipeline): An unfitted scikit-learn Pipeline
+            object containing feature engineering transformers.
+        model_wrapper: An instance of a model wrapper class (derived from `BaseModelWrapper`),
+            e.g., `LGBMWrapper()`. This wrapper contains the model to be trained.
+        cv_splitter: An instance of a cross-validation splitter class (derived from
+            `sklearn.model_selection.BaseCrossValidator`), e.g., `BasicTimeSeriesSplit()`.
+        target_column_name (str): The name of the target variable column in the DataFrame
+            returned by `fetch_financial_data`.
+        metrics_to_calculate (list): A list of callable metric functions. Each function
+            should accept `(y_true, y_pred)` and return a scalar value.
+        walk_forward_val_test_scheme (bool, optional): Set to `True` if the `cv_splitter`
+            yields three sets of indices (train, validation, test), like `WalkForwardSplit`.
+            Defaults to `False` (expects train, test indices).
+        tensorboard_log_dir (str, optional): Path to the directory where TensorBoard logs
+            for this run should be saved. If `None`, TensorBoard logging is skipped.
+            Defaults to `None`.
 
     Returns:
-        tuple: (trained_models, fold_metrics_train, fold_metrics_val, fold_metrics_test)
+        tuple: A tuple containing:
+            - `trained_models` (list): List of model instances trained on each fold.
+            - `fold_metrics_train` (list): List of dictionaries, each containing training
+              metrics for a fold.
+            - `fold_metrics_val` (list): List of dictionaries, each containing validation
+              metrics for a fold (empty if `walk_forward_val_test_scheme` is False or
+              no validation set is produced by the splitter).
+            - `fold_metrics_test` (list): List of dictionaries, each containing test
+              metrics for a fold.
     """
     print("1. Fetching data...")
     df = fetch_financial_data(**data_fetcher_params)
@@ -181,10 +205,37 @@ def get_final_model_for_test_set(
     data_fetcher_params: dict,
     feature_engineering_pipeline: Pipeline,
     best_model_config: dict,
-    ModelClass,
+    ModelClass, # The class of the model wrapper, e.g., LGBMWrapper
     target_column_name: str,
-    full_train_indices
+    full_train_indices: np.ndarray # NumPy array of indices
 ):
+    """
+    Trains a final model on a specified combined training dataset (e.g., all train + val folds).
+
+    This function is typically called after hyperparameter optimization or cross-validation
+    to prepare a model for deployment or final evaluation on a hold-out set.
+
+    Args:
+        data_fetcher_params (dict): Parameters for `fetch_financial_data`.
+        feature_engineering_pipeline (sklearn.pipeline.Pipeline): An unfitted scikit-learn Pipeline
+            for feature engineering. It will be fitted on the `full_train_indices`.
+        best_model_config (dict): Dictionary of parameters for the `ModelClass`. These are
+            typically the best parameters found during optimization or a chosen configuration.
+        ModelClass: The model wrapper class to be instantiated (e.g., `LGBMWrapper`).
+        target_column_name (str): Name of the target variable column.
+        full_train_indices (np.ndarray): A NumPy array of indices specifying which rows of the
+            fetched data constitute the full training set.
+
+    Returns:
+        tuple: A tuple containing:
+            - `final_model`: The trained model instance.
+            - `fitted_feature_pipeline`: The feature engineering pipeline fitted on the
+              `full_train_indices` data.
+
+    Raises:
+        ValueError: If data cannot be fetched, target column is not found, indices are
+                    out of bounds, or the resulting training set is empty.
+    """
     print("\n3. Training final model on full specified training data...")
     df = fetch_financial_data(**data_fetcher_params)
     if df.empty:

@@ -42,6 +42,32 @@ def fetch_financial_data(tickers, start_date, end_date, interval='1d'):
             print(f"No data found for ticker(s): {tickers} between {start_date} and {end_date}.")
             return pd.DataFrame()
 
+        # Handle potential MultiIndex columns for single ticker case
+        if isinstance(tickers, (str, list)) and (isinstance(tickers, str) or len(tickers) == 1):
+            if isinstance(data.columns, pd.MultiIndex):
+                # If single ticker, the top level is often the ticker name. We can drop it.
+                # Or, if it's ('Price', 'Ticker'), we might want to handle it differently.
+                # For yfinance, typical multi-index for single ticker might be [('Open', 'AAPL'), ('Close', 'AAPL')]
+                # Or just [Open, Close, ...] if it's simple.
+                # If the test showed [('Close', 'MSFT'), ...], this means the first level is 'Price' category.
+                # Let's assume the structure is ('Category', 'Ticker') or just ('Category')
+                # The error message showed: MultiIndex([( 'Close', 'MSFT'),...], names=['Price', 'Ticker'])
+                # This means yf.download is returning columns like ('Close', 'MSFT')
+                # We want to simplify this to just 'Close' if only one ticker was requested.
+
+                # Get the actual ticker name requested (first one if list)
+                actual_ticker_name = tickers if isinstance(tickers, str) else tickers[0]
+
+                # Check if the second level of MultiIndex contains this ticker name
+                # (it might not, if yfinance changes format again)
+                # A simpler approach: if single ticker and MultiIndex, take the first level of column names.
+                # This assumes the desired columns (Open, High, Low, Close) are in the first level.
+                # Based on error: names=['Price', 'Ticker'], so data.columns.get_level_values(0) is 'Price'
+                if len(data.columns.levels) == 2: # e.g. ('Close', 'MSFT')
+                    # We want the first part of the tuple as column name
+                    data.columns = data.columns.get_level_values(0)
+                # else: could be a more complex MultiIndex or yf changed format.
+
         # Basic data cleaning
         data.fillna(method='ffill', inplace=True)
         data.fillna(method='bfill', inplace=True)

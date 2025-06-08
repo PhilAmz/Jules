@@ -1,4 +1,12 @@
-# This file makes Python treat the `evaluation` directory as a package.
+"""
+Evaluation Module.
+
+This package provides tools for evaluating model performance and visualizing results.
+It includes:
+- A collection of standard and custom metric functions (from `metrics.py`).
+- Utilities for plotting, such as TensorBoard logging and reliability diagrams
+  (from `plotting.py`).
+"""
 
 # Re-export metrics from metrics.py
 from .metrics import (

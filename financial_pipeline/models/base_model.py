@@ -53,7 +53,8 @@ class BaseModelWrapper(BaseEstimator, MetaEstimatorMixin):
         """
         if self.model_ is None:
             raise AttributeError("Model has not been fitted yet. Call 'fit' first.")
-        raise NotImplementedError("Subclasses must implement the 'predict' method.")
+        # Subclasses should implement actual prediction logic.
+        # This base method is primarily for the check above.
 
     def predict_proba(self, X):
         """
@@ -75,9 +76,8 @@ class BaseModelWrapper(BaseEstimator, MetaEstimatorMixin):
         """
         if self.model_ is None:
             raise AttributeError("Model has not been fitted yet. Call 'fit' first.")
-        raise NotImplementedError(
-            "Subclasses for classifiers should implement 'predict_proba' if applicable."
-        )
+        # Subclasses should implement actual prediction logic.
+        # This base method is primarily for the check above.
 
     def get_params(self, deep=True):
         """

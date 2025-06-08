@@ -1,3 +1,11 @@
+"""
+Hyperparameter optimization module using Optuna.
+
+This module provides functions to define search spaces for feature engineering
+and model parameters, an objective function for Optuna to optimize, and a
+runner function to execute the optimization study. It integrates with the
+pipeline's `train_and_evaluate_model` function for evaluating each trial.
+"""
 import optuna
 import numpy as np
 import pandas as pd # For type hints and example data
@@ -100,13 +108,44 @@ def objective(
     model_config_search_space: dict,
     cv_splitter_config: dict,
     target_column_name: str,
-    metric_to_optimize, # function
+    metric_to_optimize, # function, e.g., sklearn.metrics.mean_squared_error
     metric_greater_is_better: bool,
     walk_forward_val_test_scheme: bool,
-    tensorboard_log_dir_trial_prefix: str = None
+    tensorboard_log_dir_trial_prefix: str = None # e.g., "logs/study_name/trial_"
 ) -> float:
     """
-    Optuna objective function for hyperparameter optimization.
+    Optuna objective function for optimizing the financial pipeline.
+
+    This function is called by Optuna for each trial. It constructs a feature
+    engineering pipeline and a model based on parameters suggested by the trial,
+    then evaluates this setup using `train_and_evaluate_model`. The performance
+    metric (e.g., MSE, F1-score) is returned for Optuna to minimize/maximize.
+
+    Args:
+        trial (optuna.Trial): Current Optuna trial object.
+        data_fetcher_params (dict): Static parameters for data fetching.
+        feature_engineering_config_search_space (list): Configuration defining
+            the search space for feature engineering transformers and their parameters.
+        model_config_search_space (dict): Configuration defining the search space
+            for the model wrapper and its parameters.
+        cv_splitter_config (dict): Static configuration for the cross-validation
+            splitter (class and its parameters).
+        target_column_name (str): Name of the target variable column.
+        metric_to_optimize (callable): Metric function (e.g., mean_squared_error)
+            used for evaluating pipeline performance. Optuna will optimize this metric.
+        metric_greater_is_better (bool): True if a higher value of `metric_to_optimize`
+            is better (e.g., R2 score, AUC), False otherwise (e.g., MSE).
+        walk_forward_val_test_scheme (bool): Passed to `train_and_evaluate_model`.
+            If True, uses validation set metrics for optimization; otherwise, uses test set metrics.
+        tensorboard_log_dir_trial_prefix (str, optional): If provided, creates a unique
+            TensorBoard log directory for each trial (e.g., "logs/study_name/trial_").
+            Defaults to None.
+
+    Returns:
+        float: The value of the metric to be optimized by Optuna.
+               If `metric_greater_is_better` is True, returns -metric to fit Optuna's
+               default minimization behavior. Returns float('inf') or -float('inf')
+               if the trial fails or metric is invalid.
     """
     try:
         # 1. Create feature engineering pipeline for this trial
@@ -188,16 +227,44 @@ def run_optimization(
     model_config_search_space: dict,
     cv_splitter_config: dict,
     target_column_name: str,
-    metric_to_optimize, # function
+    metric_to_optimize, # function, e.g., sklearn.metrics.mean_squared_error
     metric_greater_is_better: bool,
     walk_forward_val_test_scheme: bool,
     n_trials: int = 100,
     study_name: str = None,
-    storage_url: str = None, # e.g., "sqlite:///my_optuna_study.db"
-    tensorboard_log_dir_study_prefix: str = None # e.g., "logs/optuna_study" -> trial logs in "logs/optuna_study/trial_X"
+    storage_url: str = None, # e.g., "sqlite:///my_optuna_study.db" for persistence
+    tensorboard_log_dir_study_prefix: str = None # e.g., "logs/optuna_study"
 ):
     """
-    Runs the Optuna hyperparameter optimization study.
+    Runs an Optuna hyperparameter optimization study for the financial pipeline.
+
+    This function sets up an Optuna study and calls `study.optimize()` with the
+    provided `objective` function and configurations.
+
+    Args:
+        data_fetcher_params (dict): Static parameters for data fetching.
+        feature_engineering_config_search_space (list): Configuration for the
+            feature engineering search space.
+        model_config_search_space (dict): Configuration for the model search space.
+        cv_splitter_config (dict): Static configuration for the CV splitter.
+        target_column_name (str): Name of the target variable.
+        metric_to_optimize (callable): Metric function to be optimized.
+        metric_greater_is_better (bool): Direction of optimization for the metric.
+        walk_forward_val_test_scheme (bool): Indicates if walk-forward validation
+            (train/val/test) is used, affecting which metric set is used for optimization.
+        n_trials (int, optional): Number of optimization trials to run. Defaults to 100.
+        study_name (str, optional): Name for the Optuna study. Useful for organizing
+            and resuming studies, especially with persistent storage. Defaults to None.
+        storage_url (str, optional): URL for Optuna's study database (e.g.,
+            "sqlite:///my_study.db"). If None, an in-memory study is used.
+            Defaults to None.
+        tensorboard_log_dir_study_prefix (str, optional): Base directory for saving
+            TensorBoard logs for each trial. If provided, a subdirectory will be
+            created for each trial under this path. Defaults to None.
+
+    Returns:
+        optuna.study.Study: The completed Optuna study object, containing information
+                            about all trials, best parameters, etc.
     """
     direction = 'maximize' if metric_greater_is_better else 'minimize'
     study = optuna.create_study(direction=direction, study_name=study_name, storage=storage_url, load_if_exists=True)

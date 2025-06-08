@@ -1,4 +1,12 @@
-# This file makes Python treat the `optimization` directory as a package.
+"""
+Optimization Module.
+
+This package handles hyperparameter optimization for the financial pipeline,
+primarily using the Optuna library. It provides functions to define search
+spaces, run optimization studies, and manage trial evaluations.
+
+Key components are found in `optimizer.py`.
+"""
 
 from .optimizer import (
     create_feature_pipeline,

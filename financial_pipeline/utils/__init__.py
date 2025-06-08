@@ -1,4 +1,14 @@
-# This file makes Python treat the `utils` directory as a package.
+"""
+Utilities Module.
+
+This package provides general-purpose utility functions for the financial pipeline,
+such as logging setup and object serialization/deserialization.
+
+Key submodules:
+- `logging_utils.py`: Contains `setup_basic_logger` for configuring application logging.
+- `io_utils.py`: Contains `save_object` and `load_object` for persisting and
+  retrieving Python objects using joblib.
+"""
 
 # Import and export logging utilities
 from .logging_utils import setup_basic_logger
