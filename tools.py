@@ -28,14 +28,17 @@ def calculate(expression: str) -> str:
         # numexpr might raise its own specific errors for parsing or evaluation not caught by SyntaxError
         return f"Error during calculation: {str(e)}"
 
-def search_web(query: str) -> str:
+def search_web(query: str) -> dict: # Changed return type
     query_lower = query.lower()
     if "chainlit documentation" in query_lower:
-        return "Found link: https://docs.chainlit.io"
+        return {"type": "url", "content": "https://docs.chainlit.io", "description": "Official Chainlit Documentation"}
     elif "what is chainlit" in query_lower:
-        return "Chainlit is an open-source Python package that makes it incredibly fast to build Chat GPT like applications with your own business logic and data."
+        return {"type": "text", "content": "Chainlit is an open-source Python package that makes it incredibly fast to build Chat GPT like applications with your own business logic and data."}
+    elif "show me a logo of python" in query_lower: # Example for an image
+            # Using a known, publicly accessible image URL
+        return {"type": "image_url", "content": "https://www.python.org/static/community_logos/python-logo-master-v3-TM.png", "description": "Python Logo"}
     else:
-        return f"Mock search result for '{query}': No specific information found, but you can try searching on your preferred search engine."
+        return {"type": "text", "content": f"Mock search result for '{query}': No specific information found, but you can try searching on your preferred search engine."}
 
 import io
 import sys

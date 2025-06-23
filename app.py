@@ -83,6 +83,96 @@ SUGGESTION_ACTIONS = [
     cl.Action(name="chainlit_search_query", value="Can you search for Chainlit documentation?", label="Search for Chainlit Docs", description="Click to search for Chainlit docs")
 ]
 
+# Tool Handler Functions
+async def handle_calculate_tool(tool_call_data: dict, user_message_id: str) -> str:
+    """Handles the calculate tool call, UI, and response formatting."""
+    function_args = json.loads(tool_call_data["function"]["arguments"]) # Parse arguments here
+
+    # No specific pre-tool UI for calculator, just the generic "Calling tool..." from on_message
+
+    function_response_str = calculate(**function_args) # Direct call from tools.py
+
+    await cl.Message(
+        content=f"Tool `calculate` responded:",
+        author="Tool Manager",
+        parent_id=user_message_id,
+        elements=[cl.Text(content=function_response_str, display="inline", language="text")]
+    ).send()
+
+    return function_response_str # Return plain string for LLM
+
+async def handle_search_web_tool(tool_call_data: dict, user_message_id: str) -> str:
+    """Handles the search_web tool call, UI, and response formatting."""
+    function_args = json.loads(tool_call_data["function"]["arguments"])
+
+    function_response_dict = search_web(**function_args) # Returns a dict
+
+    response_type = function_response_dict.get("type")
+    response_content = function_response_dict.get("content")
+    response_description = function_response_dict.get("description", "")
+    tool_response_elements = []
+    tool_response_display_content = f"Tool `search_web` responded." # Default
+
+    if response_type == "url":
+        tool_response_display_content = f"Found a URL: {response_description or response_content}"
+        tool_response_elements.append(cl.Text(content=f"[{response_content}]({response_content})", display="inline", language="markdown"))
+    elif response_type == "image_url":
+        tool_response_display_content = f"Found an image: {response_description or response_content}"
+        try:
+            tool_response_elements.append(cl.Image(url=response_content, name=response_description or "search_image", display="inline", size="medium"))
+        except Exception as e:
+            tool_response_elements.append(cl.Text(content=f"(Error displaying image: {e})\nDirect link: [{response_content}]({response_content})", display="inline", language="markdown"))
+    elif response_type == "text":
+        tool_response_display_content = "Found information:"
+        tool_response_elements.append(cl.Text(content=response_content, display="inline", language="text"))
+    else: # Fallback for unknown type
+        tool_response_elements.append(cl.Text(content=str(function_response_dict), display="inline", language="text"))
+
+    await cl.Message(
+        content=tool_response_display_content,
+        author="Tool Manager",
+        parent_id=user_message_id,
+        elements=tool_response_elements if tool_response_elements else None
+    ).send()
+
+    return json.dumps(function_response_dict) # Return JSON string for LLM
+
+async def handle_execute_python_code_tool(tool_call_data: dict, user_message_id: str) -> str:
+    """Handles the execute_python_code tool call, UI, and response formatting."""
+    function_args = json.loads(tool_call_data["function"]["arguments"])
+    code_string_to_execute = function_args.get("code_string")
+
+    if code_string_to_execute:
+        await cl.Message(
+            content="The following Python code will be executed:",
+            author="Tool Manager",
+            parent_id=user_message_id,
+            elements=[cl.Code(content=code_string_to_execute, language="python", display="inline")]
+        ).send()
+    else:
+        # This case should ideally be caught by schema validation if arg is required
+        await cl.Message(content="Warning: `execute_python_code` called without `code_string` argument.", author="Tool Manager", parent_id=user_message_id).send()
+        # Return an error structure that the LLM can understand
+        return json.dumps({"error": "Missing code_string argument for execute_python_code tool."})
+
+    function_response_str = execute_python_code(code_string=code_string_to_execute) # Direct call
+
+    await cl.Message(
+        content=f"Tool `execute_python_code` executed:",
+        author="Tool Manager",
+        parent_id=user_message_id,
+        elements=[cl.Text(content=function_response_str, display="inline", language="text")]
+    ).send()
+
+    return function_response_str # Return plain string for LLM
+
+# Tool Dispatcher Dictionary
+TOOL_HANDLERS = {
+    "calculate": handle_calculate_tool,
+    "search_web": handle_search_web_tool,
+    "execute_python_code": handle_execute_python_code_tool,
+}
+
 @cl.on_chat_start
 async def on_chat_start():
     if not OPENAI_API_KEY_AVAILABLE:
@@ -217,27 +307,36 @@ async def on_message(message: cl.Message):
 
             for tool_call_data in reconstructed_response_message["tool_calls"]:
                 function_name = tool_call_data["function"]["name"]
-                function_args_str = tool_call_data["function"]["arguments"] # Already a string
+                tool_call_id = tool_call_data["id"] # Get tool_call_id
 
-                try:
-                    function_args = json.loads(function_args_str)
-                except json.JSONDecodeError as e:
-                    error_msg_content = f"Error decoding arguments for tool `{function_name}`. Arguments: `{function_args_str}`. Error: {e}"
-                    await cl.Message(content=error_msg_content, author="Tool Manager", parent_id=message.id).send()
-                    messages.append({"role": "tool", "tool_call_id": tool_call_data["id"], "name": function_name, "content": f"Error: Invalid arguments json: {function_args_str}. Details: {e}"})
-                    continue
+                # Announce the general tool call attempt (before specific handler)
+                # This uses the raw arguments string from the LLM.
+                raw_args_str = tool_call_data.get("function", {}).get("arguments", "{}")
+                await cl.Message(
+                    content=f"Calling tool: `{function_name}` with arguments: `{raw_args_str}`",
+                    author="Tool Manager",
+                    parent_id=message.id
+                ).send()
 
-                await cl.Message(content=f"Calling tool: `{function_name}` with arguments: `{json.dumps(function_args)}`", author="Tool Manager", parent_id=message.id).send()
-
-                if function_name in available_tools:
-                    tool_function = available_tools[function_name]
-                    function_response = tool_function(**function_args)
-                    await cl.Message(content=f"Tool `{function_name}` responded: `{function_response}`", author="Tool Manager", parent_id=message.id).send()
-                    messages.append({"role": "tool", "tool_call_id": tool_call_data["id"], "name": function_name, "content": function_response})
+                if function_name in TOOL_HANDLERS:
+                    handler = TOOL_HANDLERS[function_name]
+                    try:
+                        # Pass the full tool_call_data and user's message.id for parenting UI elements
+                        tool_output_for_llm = await handler(tool_call_data, message.id)
+                        messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": function_name, "content": tool_output_for_llm})
+                    except json.JSONDecodeError as e:
+                        error_content = f"Error decoding arguments for tool `{function_name}` within handler: {e}. Arguments received: {raw_args_str}"
+                        await cl.Message(content=error_content, author="Tool Manager", parent_id=message.id).send()
+                        messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": function_name, "content": json.dumps({"error": error_content, "arguments_tried": raw_args_str})})
+                    except Exception as e:
+                        error_content = f"Error during execution of tool `{function_name}`: {str(e)}"
+                        await cl.Message(content=error_content, author="Tool Manager", parent_id=message.id).send()
+                        messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": function_name, "content": json.dumps({"error": error_content})})
                 else:
-                    tool_error_msg = f"Error: Tool `{function_name}` not found by the application."
-                    await cl.Message(content=tool_error_msg, author="Tool Manager", parent_id=message.id).send()
-                    messages.append({"role": "tool", "tool_call_id": tool_call_data["id"], "name": function_name, "content": tool_error_msg})
+                    # Tool not found in handlers
+                    error_content = f"Error: No handler configured for tool `{function_name}`."
+                    await cl.Message(content=error_content, author="Tool Manager", parent_id=message.id).send()
+                    messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": function_name, "content": json.dumps({"error": error_content})})
 
             # Second LLM call (this is the one we want to stream to the user)
             llm_response_ui = cl.Message(content="", author="Assistant")
