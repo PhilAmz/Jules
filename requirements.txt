@@ -1,0 +1,12 @@
+# Core MCP framework and its dependencies
+mcp @ git+https://github.com/modelcontextprotocol/python-sdk.git
+fastapi
+uvicorn[standard]
+pydantic
+httpx
+python-dotenv
+websockets
+aiofiles
+
+# For OpenAI SDK (as per original broader plan)
+openai

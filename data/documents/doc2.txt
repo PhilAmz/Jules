@@ -1,0 +1,3 @@
+This is the second document for our search agent.
+It discusses oranges and grapes.
+Apples are also mentioned here, for testing search functionality.
